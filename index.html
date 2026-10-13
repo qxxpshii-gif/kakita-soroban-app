@@ -94,7 +94,7 @@ function pdfBytesFromPages(pages){
  const add=(bytes)=>{chunks.push(bytes);size+=bytes.length};
  const ascii=(s)=>add(enc.encode(s));
  ascii('%PDF-1.4\n');
- const objs=[]; const reserve=()=>{objs.push(null);return objs.length};
+ const objs=[null]; const reserve=()=>{objs.push(null);return objs.length-1};
  const catalog=reserve(),root=reserve();let refs=[];
  for(const p of pages){const img=reserve(),content=reserve(),page=reserve();refs.push(page);
  const w=p.width*72/25.4,h=p.height*72/25.4;
@@ -106,10 +106,10 @@ function pdfBytesFromPages(pages){
  }
  objs[catalog]=()=>ascii(`<< /Type /Catalog /Pages ${root} 0 R >>`);
  objs[root]=()=>ascii(`<< /Type /Pages /Kids [${refs.map(x=>x+' 0 R').join(' ')}] /Count ${refs.length} >>`);
- for(let i=0;i<objs.length;i++){offsets.push(size);ascii(`${i+1} 0 obj\n`);objs[i]();ascii('\nendobj\n')}
- const xref=size;ascii(`xref\n0 ${objs.length+1}\n0000000000 65535 f \n`);
+ for(let i=1;i<objs.length;i++){offsets.push(size);ascii(`${i} 0 obj\n`);objs[i]();ascii('\nendobj\n')}
+ const xref=size;ascii(`xref\n0 ${objs.length}\n0000000000 65535 f \n`);
  for(let i=1;i<offsets.length;i++)ascii(String(offsets[i]).padStart(10,'0')+' 00000 n \n');
- ascii(`trailer\n<< /Size ${objs.length+1} /Root ${catalog} 0 R >>\nstartxref\n${xref}\n%%EOF`);
+ ascii(`trailer\n<< /Size ${objs.length} /Root ${catalog} 0 R >>\nstartxref\n${xref}\n%%EOF`);
  const out=new Uint8Array(size);let pos=0;for(const c of chunks){out.set(c,pos);pos+=c.length}return out;
 }
 function decodeBase64(s){const binary=atob(s),a=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)a[i]=binary.charCodeAt(i);return a}
