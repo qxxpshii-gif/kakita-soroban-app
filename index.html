@@ -10,7 +10,7 @@ function page(k,data,n){let inner=header(k,n);if(k==='mul'||k==='div'){inner+=`<
 function answers(set,n){return `<section class="sheet"><h2>柿田そろばん教室　3年以下競技会問題　第${n}回　解答一覧</h2><div class="answergrid">${groups.map(k=>`<div class="ansgroup"><h3>${labels[k]}</h3><table class="anstable">${Array.from({length:15},(_,i)=>`<tr><td>${i+1}</td><td>${fmt(set[k][i].ans)}</td><td>${i+16}</td><td>${fmt(set[k][i+15].ans)}</td></tr>`).join('')}</table></div>`).join('')}</div></section>`}
 function persist(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(archive));return true}catch(e){alert("端末内に保存できませんでした。バックアップを作成してください。");return false}}
 function renderArchive(){const target=document.getElementById('archiveList');if(!target)return;target.innerHTML=archive.length?archive.slice().reverse().map(rec=>`<div style="border:1px solid #d6e3dc;border-radius:9px;padding:10px;margin:8px 0"><b>第${rec.id}回</b> <span style="color:#61746b;font-size:12px">${rec.date||''}</span><div><button onclick="selectRecord(${rec.id})">選択・再印刷</button></div></div>`).join(''):'<p>まだ保存された問題はありません。</p>'}
-function showActions(){document.getElementById('actions').innerHTML=`<p class="hint">選択中：${selectedRecords.map(r=>'第'+r.id+'回').join('、')}</p><button onclick="printKind('mul')">かけ算 B4縦</button><button onclick="printKind('div')">わり算 B4縦</button><button onclick="printKind('sum')">見取算 B4横</button><button onclick="printKind('mental')">見取暗算 B4横</button><button class="secondary" onclick="printKind('answer')">解答 A4横</button>`}
+function showActions(){document.getElementById('actions').innerHTML=`<p class="hint">選択中：${selectedRecords.map(r=>'第'+r.id+'回').join('、')}</p><button style="background:#1d7653" onclick="printKind('all')">🖨️ 4種目まとめて印刷（B4・4枚）</button><button onclick="printKind('mul')">かけ算 B4縦</button><button onclick="printKind('div')">わり算 B4縦</button><button onclick="printKind('sum')">見取算 B4横</button><button onclick="printKind('mental')">見取暗算 B4横</button><button class="secondary" onclick="printKind('answer')">解答 A4横</button>`}
 function selectRecord(id){let rec=archive.find(x=>x.id===id);if(!rec)return;selectedRecords=[rec];sets=[rec.set];showActions();document.getElementById('status').textContent=`第${id}回を選択しました。種目の印刷ボタンを押してください。`}
 function generate(){let count=Number(document.getElementById('count').value);let next=archive.reduce((n,r)=>Math.max(n,r.id),0)+1;let now=new Date().toLocaleDateString('ja-JP');let recs=Array.from({length:count},(_,i)=>({id:next+i,date:now,set:makeSet()}));archive.push(...recs);selectedRecords=recs;sets=recs.map(x=>x.set);let saved=persist();renderArchive();showActions();document.getElementById('status').textContent=`第${next}〜${next+count-1}回を作成しました。${saved?'この端末に保存しました。':'保存に失敗しました。'}`}
 function backup(){let blob=new Blob([JSON.stringify({version:1,records:archive},null,2)],{type:'application/json'});let url=URL.createObjectURL(blob);let a=document.createElement('a');a.href=url;a.download='柿田そろばん教室_問題バックアップ_'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),3000)}
@@ -79,16 +79,62 @@ o+=txt(x+cw-1.2,end-(q.vals.length-1-idx)*rowH,val,fs,'end','Abacus');
 }
 return o+'</svg>';
 }
+let printMode=false;
+function closePrintView(){
+ const view=document.getElementById('print-view');if(view)view.remove();
+ const css=document.getElementById('dynamic-print-style');if(css)css.remove();
+ document.body.classList.remove('show-print');printMode=false;
+}
 function printKind(k){
-if(!selectedRecords.length){alert('先に問題を作成または選択してください');return}
-let portrait=k==='mul'||k==='div',answer=k==='answer';
-let pageSize=answer?'A4 landscape':portrait?'B4 portrait':'B4 landscape';
-let W=answer?297:portrait?257:364,H=answer?210:portrait?364:257;
-let content=selectedRecords.map(rec=>`<div class="print-sheet">${svgPage(k,rec.set,rec.id)}</div>`).join('');
-let fontCss=document.querySelector('style').textContent.match(/@font-face\{[^}]+\}/)[0];
-let w=window.open('','_blank');
-if(!w){alert('ポップアップを許可してください');return}
-w.document.write(`<html lang="ja"><head><meta charset="utf-8"><title>3年以下競技会問題 印刷</title><style>${fontCss}@page{size:${pageSize};margin:0}html,body{margin:0;padding:0;background:white}.print-sheet{width:${W}mm;height:${H}mm;break-after:page;page-break-after:always;overflow:hidden}.print-sheet:last-child{break-after:auto}.print-sheet svg{display:block;width:100%;height:100%}</style></head><body>${content}<script>window.onload=()=>{document.fonts.ready.then(()=>setTimeout(()=>window.print(),300))}<\/script></body></html>`);
-w.document.close();
+ if(!selectedRecords.length){alert('先に問題を作成または選択してください');return}
+ closePrintView();
+ const kinds=k==='all'?['mul','div','sum','mental']: [k];
+ const titles={mul:'かけ算',div:'わり算',sum:'見取算',mental:'見取暗算',answer:'解答'};
+ const css=document.createElement('style');css.id='dynamic-print-style';
+ css.textContent=`
+ @page b4portrait{size:257mm 364mm;margin:0}
+ @page b4landscape{size:364mm 257mm;margin:0}
+ @page a4landscape{size:297mm 210mm;margin:0}
+ body.show-print{background:#eef3f0}
+ body.show-print main,body.show-print #preview{display:none!important}
+ #print-view{max-width:900px;margin:auto;padding:12px 12px 60px}
+ .print-toolbar{position:sticky;top:0;z-index:100;background:#fff;border-radius:12px;padding:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;box-shadow:0 2px 12px #aaa7}
+ .print-toolbar button{width:auto;margin:0;padding:12px 16px;cursor:pointer}
+ .print-toolbar .back{background:#e2eae5;color:#204637}
+ .print-help{font-size:13px;color:#42564b;margin:10px 2px}
+ .print-sheet{background:white;box-shadow:0 2px 14px #aaa8;margin:16px auto;overflow:hidden;max-width:100%}
+ .print-sheet svg{display:block;width:100%;height:100%}
+ .print-sheet.b4portrait{width:257mm;aspect-ratio:257/364;page:b4portrait}
+ .print-sheet.b4landscape{width:364mm;aspect-ratio:364/257;page:b4landscape}
+ .print-sheet.a4landscape{width:297mm;aspect-ratio:297/210;page:a4landscape}
+ @media print{
+ html,body,body.show-print{margin:0!important;padding:0!important;background:white!important}
+ #print-view{max-width:none!important;margin:0!important;padding:0!important}
+ .print-toolbar,.print-help{display:none!important}
+ .print-sheet{max-width:none!important;margin:0!important;box-shadow:none!important;break-after:page;page-break-after:always;overflow:hidden!important}
+ .print-sheet:last-child{break-after:auto;page-break-after:auto}
+ .print-sheet.b4portrait{width:257mm!important;height:364mm!important}
+ .print-sheet.b4landscape{width:364mm!important;height:257mm!important}
+ .print-sheet.a4landscape{width:297mm!important;height:210mm!important}
+ }
+ `;
+ document.head.appendChild(css);
+ const view=document.createElement('div');view.id='print-view';
+ const toolbar=document.createElement('div');toolbar.className='print-toolbar';
+ toolbar.innerHTML='<button class="back" type="button" onclick="closePrintView()">← アプリに戻る</button><button type="button" onclick="window.print()">🖨️ 印刷する</button>';
+ view.appendChild(toolbar);
+ const help=document.createElement('p');help.className='print-help';
+ help.textContent=k==='all'?'4種目をまとめて表示しています。B4縦2枚・B4横2枚です。印刷設定で用紙の向きを確認してください。':'印刷を終了・キャンセルしたら「アプリに戻る」を押してください。';
+ view.appendChild(help);
+ selectedRecords.forEach(rec=>kinds.forEach(kind=>{
+ const div=document.createElement('div');
+ div.className='print-sheet '+(kind==='answer'?'a4landscape':kind==='mul'||kind==='div'?'b4portrait':'b4landscape');
+ div.setAttribute('aria-label',`第${rec.id}回 ${titles[kind]}`);
+ div.innerHTML=svgPage(kind,rec.set,rec.id);
+ view.appendChild(div);
+ }));
+ document.body.appendChild(view);
+ document.body.classList.add('show-print');printMode=true;
+ window.scrollTo(0,0);
 }
 renderArchive();if("serviceWorker" in navigator && location.protocol==="https:"){navigator.serviceWorker.register("sw.js").catch(()=>{})}</script></body></html>
